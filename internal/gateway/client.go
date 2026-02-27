@@ -43,9 +43,10 @@ type Options struct {
 type Client struct {
 	opts Options
 
-	mu     sync.Mutex
-	conn   *websocket.Conn
-	status Status
+	mu           sync.Mutex
+	conn         *websocket.Conn
+	status       Status
+	lastErr      error // stores the actual handshake/connection error
 
 	pendingMu sync.Mutex
 	pending   map[string]chan response
@@ -119,6 +120,12 @@ func (c *Client) Connect() error {
 				return nil
 			}
 			if c.Status() == StatusError {
+				c.mu.Lock()
+				err := c.lastErr
+				c.mu.Unlock()
+				if err != nil {
+					return err
+				}
 				return fmt.Errorf("handshake failed")
 			}
 		case <-c.done:
@@ -216,18 +223,30 @@ func (c *Client) sendHandshake(nonce string) error {
 	select {
 	case r := <-ch:
 		if r.err != nil {
+			err := fmt.Errorf("handshake rejected: %w", r.err)
+			c.mu.Lock()
+			c.lastErr = err
+			c.mu.Unlock()
 			c.setStatus(StatusError)
-			return fmt.Errorf("handshake rejected: %w", r.err)
+			return err
 		}
 		if t, _ := r.payload["type"].(string); t != "hello-ok" {
+			err := fmt.Errorf("unexpected handshake response: %v", r.payload)
+			c.mu.Lock()
+			c.lastErr = err
+			c.mu.Unlock()
 			c.setStatus(StatusError)
-			return fmt.Errorf("unexpected handshake response: %v", r.payload)
+			return err
 		}
 		c.setStatus(StatusConnected)
 		return nil
 	case <-time.After(c.opts.RequestTimeout):
+		err := fmt.Errorf("handshake timed out after %s", c.opts.RequestTimeout)
+		c.mu.Lock()
+		c.lastErr = err
+		c.mu.Unlock()
 		c.setStatus(StatusError)
-		return fmt.Errorf("handshake timed out")
+		return err
 	case <-c.done:
 		return fmt.Errorf("client closed during handshake")
 	}
@@ -294,6 +313,11 @@ func (c *Client) handleEvent(frame map[string]any) {
 		nonce, _ := payload["nonce"].(string)
 		go func() {
 			if err := c.sendHandshake(nonce); err != nil {
+				c.mu.Lock()
+				if c.lastErr == nil {
+					c.lastErr = err
+				}
+				c.mu.Unlock()
 				c.setStatus(StatusError)
 			}
 		}()
