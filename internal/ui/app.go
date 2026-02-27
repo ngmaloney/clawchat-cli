@@ -318,7 +318,7 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 
 func (a *App) handleSlash(cmd string) tea.Cmd {
 	switch strings.Fields(cmd)[0] {
-	case "/quit", "/exit":
+	case "/quit", "/exit", "/q":
 		a.cleanup()
 		return tea.Quit
 	case "/clear":
