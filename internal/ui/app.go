@@ -24,6 +24,7 @@ type appState int
 const (
 	stateConnecting appState = iota
 	stateChat
+	stateSessionPicker
 	stateError
 )
 
@@ -42,6 +43,7 @@ type connectErrMsg struct{ err error }
 type chatEventMsg gateway.ChatEvent
 type sendDoneMsg struct{ runID string }
 type historyReloadMsg []gateway.Message
+type sessionsLoadedMsg []gateway.Session
 
 // ── Rendered message ──────────────────────────────────────────────────────────
 
@@ -72,6 +74,10 @@ type App struct {
 	isWaiting   bool   // true between send and first assistant token — shows "thinking" indicator
 
 	events chan gateway.ChatEvent
+
+	// session picker
+	sessions  []gateway.Session
+	pickerIdx int
 
 	viewport viewport.Model
 	input    textarea.Model
@@ -225,6 +231,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd := a.handleKey(msg); cmd != nil {
 				return a, cmd
 			}
+		case stateSessionPicker:
+			if cmd := a.handlePickerKey(msg); cmd != nil {
+				return a, cmd
+			}
 		case stateError:
 			return a, tea.Quit
 		}
@@ -253,6 +263,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case connectErrMsg:
 		a.err = msg.err
 		a.state = stateError
+
+	case sessionsLoadedMsg:
+		a.sessions = []gateway.Session(msg)
+		a.pickerIdx = 0
+		// Pre-select the current session
+		for i, s := range a.sessions {
+			if s.Key == a.sessionKey {
+				a.pickerIdx = i
+				break
+			}
+		}
+		a.state = stateSessionPicker
 
 	case chatEventMsg:
 		if cmd := a.handleChatEvent(gateway.ChatEvent(msg)); cmd != nil {
@@ -300,6 +322,8 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 	case "ctrl+c":
 		a.cleanup()
 		return tea.Quit
+	case "ctrl+s":
+		return a.openPickerCmd()
 	case "enter":
 		text := strings.TrimSpace(a.input.Value())
 		if text == "" {
@@ -328,12 +352,14 @@ func (a *App) handleSlash(cmd string) tea.Cmd {
 	case "/help":
 		a.appendMsg(renderMsg{
 			rendered: styleSystemMsg.Render(
-				"Client: /clear  /quit\n" +
+				"Client: /clear  /sessions  /quit\n" +
 					"Gateway: /model  /models  /status  /stop  /thinking  /verbose  /compact  /reset  /new\n" +
-					"Scroll: ↑↓ PgUp PgDn",
+					"Scroll: ↑↓ PgUp PgDn  │  Switch session: ctrl+s",
 			),
 		})
 		return nil
+	case "/sessions":
+		return a.openPickerCmd()
 	default:
 		// Forward to gateway — it handles /model, /stop, /thinking, /status, etc.
 		a.isWaiting = true
@@ -406,6 +432,98 @@ func (a *App) reloadHistoryCmd() tea.Cmd {
 	}
 }
 
+func (a *App) openPickerCmd() tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		sessions, err := client.ListSessions()
+		if err != nil {
+			return nil
+		}
+		return sessionsLoadedMsg(sessions)
+	}
+}
+
+func (a *App) handlePickerKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "ctrl+c", "esc", "q":
+		a.state = stateChat
+	case "up", "k":
+		if a.pickerIdx > 0 {
+			a.pickerIdx--
+		}
+	case "down", "j":
+		if a.pickerIdx < len(a.sessions)-1 {
+			a.pickerIdx++
+		}
+	case "enter":
+		if len(a.sessions) > 0 {
+			selected := a.sessions[a.pickerIdx]
+			if selected.Key == a.sessionKey {
+				a.state = stateChat
+				return nil
+			}
+			return a.switchSessionCmd(selected)
+		}
+	}
+	return nil
+}
+
+func (a *App) switchSessionCmd(s gateway.Session) tea.Cmd {
+	a.sessionKey = s.Key
+	a.session = s
+	a.messages = nil
+	a.streamBuf = ""
+	a.streamRunID = ""
+	a.localRunID = ""
+	a.isWaiting = false
+	a.state = stateChat
+	a.flushViewport()
+	return a.reloadHistoryCmd()
+}
+
+func (a *App) viewSessionPicker() string {
+	if a.width == 0 {
+		return ""
+	}
+
+	title := styleBadgeConnected.Render("  Sessions  ")
+	var rows []string
+	for i, s := range a.sessions {
+		label := s.Key
+		if s.Label != "" && s.Label != s.Key {
+			label = s.Label
+		}
+		model := ""
+		if s.Model != "" {
+			model = styleTimestamp.Render("  " + s.Model)
+		}
+		line := label + model
+		if i == a.pickerIdx {
+			line = styleBadgeConnected.Render("▶ ") + styleMessageBody.Render(label) + model
+		} else {
+			line = styleHelp.Render("  ") + styleHelp.Render(label) + model
+		}
+		rows = append(rows, line)
+	}
+	if len(rows) == 0 {
+		rows = append(rows, styleHelp.Render("  No sessions available"))
+	}
+
+	hint := styleTimestamp.Render("↑↓: navigate   enter: select   esc: cancel")
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		"",
+		strings.Join(rows, "\n"),
+		"",
+		hint,
+	)
+
+	box := styleConnectBox.Width(min(60, a.width-8)).Render(body)
+	return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+
+
 // ── View ──────────────────────────────────────────────────────────────────────
 
 func (a *App) View() string {
@@ -417,6 +535,8 @@ func (a *App) View() string {
 		return a.viewConnecting()
 	case stateChat:
 		return a.viewChat()
+	case stateSessionPicker:
+		return a.viewSessionPicker()
 	case stateError:
 		return a.viewError()
 	}
@@ -462,7 +582,7 @@ func (a *App) viewChat() string {
 	header := a.renderHeader()
 	chatBox := styleChatBox.Width(a.width - 2).Render(a.viewport.View())
 	inputBox := styleInputBoxFocused.Width(a.width - 2).Render(a.input.View())
-	help := styleHelp.Padding(0, 1).Render("enter: send   ctrl+c: quit   /help   ↑↓: scroll")
+	help := styleHelp.Padding(0, 1).Render("enter: send   ctrl+s: sessions   ctrl+c: quit   /help   ↑↓: scroll")
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, chatBox, inputBox, help)
 }
