@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -195,13 +194,32 @@ func (c *Client) Call(method string, params map[string]any) (map[string]any, err
 func (c *Client) sendHandshake(nonce string) error {
 	id := fmt.Sprintf("cc-%d", c.seq.Add(1))
 
+	scopes := []string{"operator.read", "operator.write"}
+
+	// Build device identity — required for the gateway to grant scopes.
+	var deviceField map[string]any
+	if dev, err := loadOrCreateDevice(); err == nil {
+		if sig, signedAt, err := dev.sign(nonce, c.opts.Token, "operator", scopes); err == nil {
+			deviceField = map[string]any{
+				"id":        dev.DeviceID,
+				"publicKey": dev.PublicKey,
+				"signature": sig,
+				"signedAt":  signedAt,
+				"nonce":     nonce,
+			}
+		}
+	}
+
 	params := map[string]any{
 		"role":        "operator",
-		"scopes":      []string{"operator.read", "operator.write"},
+		"scopes":      scopes,
 		"auth":        map[string]any{"token": c.opts.Token},
 		"client":      map[string]any{"id": "cli", "version": "dev", "platform": "cli", "mode": "cli"},
 		"minProtocol": 3,
 		"maxProtocol": 3,
+	}
+	if deviceField != nil {
+		params["device"] = deviceField
 	}
 
 	frame := map[string]any{
@@ -238,11 +256,6 @@ func (c *Client) sendHandshake(nonce string) error {
 			c.mu.Unlock()
 			c.setStatus(StatusError)
 			return err
-		}
-		// Debug: log hello-ok payload to /tmp/clawchat-debug.log
-		if f, err := os.OpenFile("/tmp/clawchat-debug.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600); err == nil {
-			fmt.Fprintf(f, "hello-ok payload: %v\n", r.payload)
-			f.Close()
 		}
 		c.setStatus(StatusConnected)
 		return nil
