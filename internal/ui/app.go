@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ngmaloney/clawchat-cli/internal/config"
 	"github.com/ngmaloney/clawchat-cli/internal/gateway"
@@ -72,10 +73,11 @@ type App struct {
 	input    textinput.Model
 	spin     spinner.Model
 
-	width  int
-	height int
-	ready  bool
-	msgSeq int
+	width    int
+	height   int
+	ready    bool
+	msgSeq   int
+	renderer *glamour.TermRenderer
 }
 
 func New(cfg *config.Config) *App {
@@ -457,6 +459,14 @@ func (a *App) rebuildLayout() {
 	// Input width: border(2) + padding(2) = 4 total overhead
 	a.input.Width = a.width - 6
 
+	// Recreate glamour renderer at the new width
+	if r, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(vpWidth-2),
+	); err == nil {
+		a.renderer = r
+	}
+
 	a.flushViewport()
 }
 
@@ -503,8 +513,16 @@ func (a *App) renderMessage(role, content string, ts time.Time) renderMsg {
 	switch role {
 	case "user":
 		label = styleUserLabel.Render("you") + tsStr
+		rendered = lipgloss.JoinVertical(lipgloss.Left, "", label, wrapped)
 	case "assistant":
 		label = styleAssistantLabel.Render("assistant") + tsStr
+		body := wrapped
+		if a.renderer != nil {
+			if md, err := a.renderer.Render(content); err == nil {
+				body = strings.TrimRight(md, "\n")
+			}
+		}
+		rendered = lipgloss.JoinVertical(lipgloss.Left, "", label, body)
 	default:
 		return renderMsg{
 			role:      role,
@@ -513,8 +531,6 @@ func (a *App) renderMessage(role, content string, ts time.Time) renderMsg {
 			timestamp: ts,
 		}
 	}
-
-	rendered = lipgloss.JoinVertical(lipgloss.Left, "", label, wrapped)
 
 	return renderMsg{
 		role:      role,
