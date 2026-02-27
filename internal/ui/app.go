@@ -3,6 +3,7 @@ package ui
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -459,7 +460,11 @@ func (a *App) renderHeader() string {
 		badges = append(badges, styleBadgeConnecting.Render("○ connecting"))
 	}
 
+	host := gatewayHost(a.cfg.GatewayURL)
+
 	right := lipgloss.JoinHorizontal(lipgloss.Center,
+		styleSession.Render(host),
+		"  ",
 		styleSession.Render(a.sessionKey),
 		"  ",
 		strings.Join(badges, "  "),
@@ -473,6 +478,15 @@ func (a *App) renderHeader() string {
 	line := left + strings.Repeat(" ", gap) + right
 
 	return styleHeaderBar.Width(a.width).Render(line)
+}
+
+// gatewayHost extracts the host (host:port) from a WebSocket URL.
+func gatewayHost(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return rawURL
+	}
+	return u.Host
 }
 
 // ── Layout helpers ────────────────────────────────────────────────────────────

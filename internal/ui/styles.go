@@ -6,7 +6,7 @@ var (
 	// ANSI 256-color palette — predictable contrast across all terminals
 	colorOrange    = lipgloss.Color("208") // bright orange — brand
 	colorCyan      = lipgloss.Color("39")  // bright blue-cyan — assistant
-	colorBorder    = lipgloss.Color("63")  // medium purple-blue — borders
+	colorBorder    = lipgloss.Color("34")  // terminal green — borders
 	colorGray      = lipgloss.Color("246") // medium gray — readable muted text
 	colorSubtle    = lipgloss.Color("240") // dark gray — timestamps, faint info
 	colorGreen     = lipgloss.Color("82")  // bright green — connected
@@ -26,8 +26,8 @@ var (
 			Padding(0, 1)
 
 	styleInputBoxFocused = lipgloss.NewStyle().
-				Border(lipgloss.ThickBorder()).
-				BorderForeground(colorOrange).
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorGreen).
 				Padding(0, 1)
 
 	// Header bar — slightly elevated background so it reads as a distinct bar
@@ -60,8 +60,8 @@ var (
 
 	// Status badges
 	styleBadgeSSH = lipgloss.NewStyle().
-			Background(colorBorder).
-			Foreground(colorWhite).
+			Background(colorGreen).
+			Foreground(lipgloss.Color("0")).
 			Padding(0, 1).
 			Bold(true)
 
