@@ -196,7 +196,7 @@ func (c *Client) sendHandshake(nonce string) error {
 
 	params := map[string]any{
 		"role":        "operator",
-		"scopes":      []string{"operator.admin", "operator.approvals", "operator.pairing", "operator.read"},
+		"scopes":      []string{"operator.read", "operator.write"},
 		"auth":        map[string]any{"token": c.opts.Token},
 		"client":      map[string]any{"id": "cli", "version": "dev", "platform": "cli", "mode": "cli"},
 		"minProtocol": 3,
