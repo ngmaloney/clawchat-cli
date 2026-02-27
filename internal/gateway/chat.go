@@ -115,14 +115,18 @@ func (c *Client) GetHistory(sessionKey string, limit int) ([]Message, error) {
 	return messages, nil
 }
 
-// SendMessage sends a chat message to a session.
-func (c *Client) SendMessage(sessionKey, text, idempotencyKey string) error {
-	_, err := c.Call("chat.send", map[string]any{
+// SendMessage sends a chat message to a session and returns the run ID.
+func (c *Client) SendMessage(sessionKey, text, idempotencyKey string) (string, error) {
+	payload, err := c.Call("chat.send", map[string]any{
 		"sessionKey":     sessionKey,
 		"message":        text,
 		"idempotencyKey": idempotencyKey,
 	})
-	return err
+	if err != nil {
+		return "", err
+	}
+	runID, _ := payload["runId"].(string)
+	return runID, nil
 }
 
 // ParseChatEvent parses a raw "chat" event payload into a ChatEvent.

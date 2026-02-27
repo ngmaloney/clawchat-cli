@@ -40,6 +40,8 @@ type connectDoneMsg struct {
 type connectErrMsg struct{ err error }
 
 type chatEventMsg gateway.ChatEvent
+type sendDoneMsg struct{ runID string }
+type historyReloadMsg []gateway.Message
 
 // ── Rendered message ──────────────────────────────────────────────────────────
 
@@ -66,6 +68,7 @@ type App struct {
 	messages    []renderMsg
 	streamRunID string
 	streamBuf   string
+	localRunID  string // run ID of the most recent locally-initiated send
 
 	events chan gateway.ChatEvent
 
@@ -243,8 +246,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.state = stateError
 
 	case chatEventMsg:
-		a.handleChatEvent(gateway.ChatEvent(msg))
+		if cmd := a.handleChatEvent(gateway.ChatEvent(msg)); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		cmds = append(cmds, waitForEvent(a.events))
+
+	case sendDoneMsg:
+		a.localRunID = msg.runID
+
+	case historyReloadMsg:
+		a.messages = make([]renderMsg, 0, len(msg))
+		for _, m := range msg {
+			a.messages = append(a.messages, a.renderMessage(m.Role, m.Content, m.Timestamp))
+		}
+		a.flushViewport()
 
 	case nil:
 		// no-op
@@ -311,9 +326,9 @@ func (a *App) handleSlash(cmd string) tea.Cmd {
 	return nil
 }
 
-func (a *App) handleChatEvent(ev gateway.ChatEvent) {
+func (a *App) handleChatEvent(ev gateway.ChatEvent) tea.Cmd {
 	if ev.SessionKey != "" && ev.SessionKey != a.sessionKey {
-		return
+		return nil
 	}
 	switch ev.State {
 	case "delta":
@@ -330,6 +345,12 @@ func (a *App) handleChatEvent(ev gateway.ChatEvent) {
 		if content != "" {
 			a.appendMsg(a.renderMessage("assistant", content, time.Now()))
 		}
+		// If this run was triggered by another client, reload history to show their message
+		if ev.RunID != "" && ev.RunID != a.localRunID {
+			a.localRunID = "" // clear so next external run also triggers reload
+			return a.reloadHistoryCmd()
+		}
+		a.localRunID = ""
 	case "error":
 		a.streamBuf = ""
 		a.streamRunID = ""
@@ -337,6 +358,7 @@ func (a *App) handleChatEvent(ev gateway.ChatEvent) {
 			rendered: styleError.Render("⚠ " + ev.ErrorMsg),
 		})
 	}
+	return nil
 }
 
 func (a *App) sendCmd(text string) tea.Cmd {
@@ -345,10 +367,23 @@ func (a *App) sendCmd(text string) tea.Cmd {
 	sessionKey := a.sessionKey
 	client := a.client
 	return func() tea.Msg {
-		if err := client.SendMessage(sessionKey, text, key); err != nil {
+		runID, err := client.SendMessage(sessionKey, text, key)
+		if err != nil {
 			return chatEventMsg(gateway.ChatEvent{State: "error", ErrorMsg: err.Error()})
 		}
-		return nil
+		return sendDoneMsg{runID: runID}
+	}
+}
+
+func (a *App) reloadHistoryCmd() tea.Cmd {
+	sessionKey := a.sessionKey
+	client := a.client
+	return func() tea.Msg {
+		history, err := client.GetHistory(sessionKey, 50)
+		if err != nil {
+			return nil
+		}
+		return historyReloadMsg(history)
 	}
 }
 
