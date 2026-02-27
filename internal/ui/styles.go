@@ -3,95 +3,92 @@ package ui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	// Color palette
-	colorPrimary   = lipgloss.Color("#FF6B35") // orange — ClawChat brand
-	colorBlue      = lipgloss.Color("#4A90E2") // border blue
-	colorMuted     = lipgloss.Color("#6C757D") // gray
-	colorDimmed    = lipgloss.Color("#3A3A3A") // very dim
-	colorSuccess   = lipgloss.Color("#6BCF7F") // green
-	colorDanger    = lipgloss.Color("#FF6B6B") // red
-	colorWhite     = lipgloss.Color("#FFFFFF")
-	colorAssistant = lipgloss.Color("#87CEEB") // sky blue
+	// ANSI 256-color palette — predictable contrast across all terminals
+	colorOrange    = lipgloss.Color("208") // bright orange — brand
+	colorCyan      = lipgloss.Color("39")  // bright blue-cyan — assistant
+	colorBorder    = lipgloss.Color("63")  // medium purple-blue — borders
+	colorGray      = lipgloss.Color("246") // medium gray — readable muted text
+	colorSubtle    = lipgloss.Color("240") // dark gray — timestamps, faint info
+	colorGreen     = lipgloss.Color("82")  // bright green — connected
+	colorRed       = lipgloss.Color("196") // bright red — errors
+	colorWhite     = lipgloss.Color("255") // near-white
+	colorHeaderBg  = lipgloss.Color("235") // dark gray bg — header bar
 
-	// Title
+	// App title
 	styleAppTitle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(colorPrimary)
+			Foreground(colorOrange)
 
-	// Panes
+	// Panes with rounded borders
 	styleChatBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorBlue).
-			Padding(0, 1)
-
-	styleInputBox = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorBlue).
+			BorderForeground(colorBorder).
 			Padding(0, 1)
 
 	styleInputBoxFocused = lipgloss.NewStyle().
 				Border(lipgloss.ThickBorder()).
-				BorderForeground(colorPrimary).
+				BorderForeground(colorOrange).
 				Padding(0, 1)
 
-	// Header bar
+	// Header bar — slightly elevated background so it reads as a distinct bar
 	styleHeaderBar = lipgloss.NewStyle().
-			Background(lipgloss.Color("#1A1A2E")).
+			Background(colorHeaderBg).
 			Foreground(colorWhite).
 			Padding(0, 2)
 
-	// Footer / help
+	// Help line below input
 	styleHelp = lipgloss.NewStyle().
-			Foreground(colorMuted)
+			Foreground(colorGray).
+			Padding(0, 1)
 
 	// Message labels
 	styleUserLabel = lipgloss.NewStyle().
-			Foreground(colorPrimary).
+			Foreground(colorOrange).
 			Bold(true)
 
 	styleAssistantLabel = lipgloss.NewStyle().
-				Foreground(colorAssistant).
+				Foreground(colorCyan).
 				Bold(true)
 
 	styleSystemMsg = lipgloss.NewStyle().
-			Foreground(colorMuted).
+			Foreground(colorGray).
 			Italic(true)
 
+	// Timestamps — subtle but actually readable
 	styleTimestamp = lipgloss.NewStyle().
-			Foreground(colorDimmed)
+			Foreground(colorSubtle)
 
 	// Status badges
 	styleBadgeSSH = lipgloss.NewStyle().
-			Background(colorBlue).
+			Background(colorBorder).
 			Foreground(colorWhite).
 			Padding(0, 1).
 			Bold(true)
 
 	styleBadgeConnected = lipgloss.NewStyle().
-				Foreground(colorSuccess).
+				Foreground(colorGreen).
 				Bold(true)
 
 	styleBadgeConnecting = lipgloss.NewStyle().
-				Foreground(colorMuted)
+				Foreground(colorGray)
 
-	// Session label
+	// Session key in header
 	styleSession = lipgloss.NewStyle().
-			Foreground(colorMuted)
+			Foreground(colorGray)
 
-	// Error
+	// Errors
 	styleError = lipgloss.NewStyle().
-			Foreground(colorDanger).
+			Foreground(colorRed).
 			Bold(true)
 
-	// Connect screen
+	// Connect / error screens
 	styleConnectTitle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(colorPrimary).
-				MarginBottom(1)
+				Foreground(colorOrange)
 
 	styleConnectBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorBlue).
+			BorderForeground(colorBorder).
 			Padding(1, 3).
 			Width(50)
 )
