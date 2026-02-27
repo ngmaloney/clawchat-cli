@@ -1,0 +1,60 @@
+version: '3'
+
+tasks:
+  default:
+    desc: List all tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the application
+    cmds:
+      - go build -o clawchat-cli ./cmd/clawchat-cli
+
+  run:
+    desc: Run the application
+    cmds:
+      - go run ./cmd/clawchat-cli
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./...
+
+  test-v:
+    desc: Run tests verbose
+    cmds:
+      - go test -v ./...
+
+  test-coverage:
+    desc: Run tests with coverage
+    cmds:
+      - go test -coverprofile=coverage.out ./...
+      - go tool cover -func=coverage.out
+
+  fmt:
+    desc: Format code
+    cmds:
+      - go fmt ./...
+
+  lint:
+    desc: Lint code
+    cmds:
+      - go vet ./...
+
+  ci:
+    desc: Full CI check (fmt + lint + test)
+    cmds:
+      - go fmt ./...
+      - go vet ./...
+      - go test -race ./...
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -f clawchat-cli coverage.out
+
+  release-snapshot:
+    desc: Test release build locally (no publish)
+    cmds:
+      - goreleaser release --snapshot --clean
