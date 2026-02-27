@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -237,6 +238,11 @@ func (c *Client) sendHandshake(nonce string) error {
 			c.mu.Unlock()
 			c.setStatus(StatusError)
 			return err
+		}
+		// Debug: log hello-ok payload to /tmp/clawchat-debug.log
+		if f, err := os.OpenFile("/tmp/clawchat-debug.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600); err == nil {
+			fmt.Fprintf(f, "hello-ok payload: %v\n", r.payload)
+			f.Close()
 		}
 		c.setStatus(StatusConnected)
 		return nil
