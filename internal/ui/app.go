@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -74,7 +74,7 @@ type App struct {
 	events chan gateway.ChatEvent
 
 	viewport viewport.Model
-	input    textinput.Model
+	input    textarea.Model
 	spin     spinner.Model
 
 	width  int
@@ -88,9 +88,15 @@ func New(cfg *config.Config) *App {
 	sp.Spinner = spinner.Dot
 	sp.Style = styleBadgeConnecting
 
-	ti := textinput.New()
+	ti := textarea.New()
 	ti.Placeholder = "Type a message…"
 	ti.CharLimit = 4096
+	ti.ShowLineNumbers = false
+	ti.SetHeight(3)
+	// Remove textarea's own border — we wrap it in our styled box
+	noBorder := lipgloss.NewStyle()
+	ti.FocusedStyle.Base = noBorder
+	ti.BlurredStyle.Base = noBorder
 	ti.Focus()
 
 	return &App{
@@ -296,7 +302,7 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		if text == "" {
 			return nil
 		}
-		a.input.SetValue("")
+		a.input.Reset()
 		if strings.HasPrefix(text, "/") {
 			return a.handleSlash(text)
 		}
@@ -500,8 +506,8 @@ func (a *App) rebuildLayout() {
 	if a.width == 0 || a.height == 0 {
 		return
 	}
-	// header(1) + chatBox(border 2 + viewport) + inputBox(border 2 + content 1) + help(1)
-	vpHeight := a.height - 7
+	// header(1) + chatBox(border 2 + viewport) + inputBox(border 2 + content 3) + help(1)
+	vpHeight := a.height - 9
 	if vpHeight < 3 {
 		vpHeight = 3
 	}
@@ -519,7 +525,7 @@ func (a *App) rebuildLayout() {
 	}
 	a.ready = true
 	// Input width: border(2) + padding(2) = 4 total overhead
-	a.input.Width = a.width - 6
+	a.input.SetWidth(a.width - 6)
 
 	a.flushViewport()
 }
