@@ -308,8 +308,8 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		if strings.HasPrefix(text, "/") {
 			return a.handleSlash(text)
 		}
-		a.appendMsg(a.renderMessage("user", text, time.Now()))
 		a.isWaiting = true
+		a.appendMsg(a.renderMessage("user", text, time.Now()))
 		return a.sendCmd(text)
 	}
 	return nil
