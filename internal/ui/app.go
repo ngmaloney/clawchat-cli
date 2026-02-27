@@ -69,6 +69,7 @@ type App struct {
 	streamRunID string
 	streamBuf   string
 	localRunID  string // run ID of the most recent locally-initiated send
+	isWaiting   bool   // true between send and first assistant token — shows "thinking" indicator
 
 	events chan gateway.ChatEvent
 
@@ -300,6 +301,7 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 			return a.handleSlash(text)
 		}
 		a.appendMsg(a.renderMessage("user", text, time.Now()))
+		a.isWaiting = true
 		return a.sendCmd(text)
 	}
 	return nil
@@ -331,10 +333,12 @@ func (a *App) handleChatEvent(ev gateway.ChatEvent) tea.Cmd {
 	}
 	switch ev.State {
 	case "delta":
+		a.isWaiting = false
 		a.streamRunID = ev.RunID
 		a.streamBuf = ev.Content
 		a.flushViewport()
 	case "final":
+		a.isWaiting = false
 		content := ev.Content
 		if content == "" {
 			content = a.streamBuf
@@ -351,6 +355,7 @@ func (a *App) handleChatEvent(ev gateway.ChatEvent) tea.Cmd {
 		}
 		a.localRunID = ""
 	case "error":
+		a.isWaiting = false
 		a.streamBuf = ""
 		a.streamRunID = ""
 		a.appendMsg(renderMsg{
@@ -529,7 +534,15 @@ func (a *App) flushViewport() {
 		blocks = append(blocks, m.rendered)
 	}
 
-	if a.streamBuf != "" {
+	if a.isWaiting && a.streamBuf == "" {
+		label := styleAssistantLabel.Render("assistant")
+		thinking := lipgloss.JoinVertical(lipgloss.Left,
+			"",
+			label,
+			styleHelp.Render("thinking…"),
+		)
+		blocks = append(blocks, thinking)
+	} else if a.streamBuf != "" {
 		label := styleAssistantLabel.Render("assistant")
 		// Use lipgloss width-constrained style for wrapping
 		content := lipgloss.NewStyle().Width(a.viewport.Width - 2).Render(a.streamBuf)
