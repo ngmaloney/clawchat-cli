@@ -76,6 +76,10 @@ var (
 	styleSession = lipgloss.NewStyle().
 			Foreground(colorGray)
 
+	// Message body — explicit foreground so it's visible on any terminal theme
+	styleMessageBody = lipgloss.NewStyle().
+			Foreground(colorWhite)
+
 	// Errors
 	styleError = lipgloss.NewStyle().
 			Foreground(colorRed).

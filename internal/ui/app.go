@@ -253,8 +253,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if a.state == stateChat && a.ready {
 		var vpCmd, tiCmd tea.Cmd
-		a.viewport, vpCmd = a.viewport.Update(msg)
-		a.input, tiCmd = a.input.Update(msg)
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			// Route scroll keys to viewport only — prevents typed chars from scrolling
+			switch keyMsg.String() {
+			case "up", "down", "pgup", "pgdown", "ctrl+u", "ctrl+d", "home", "end":
+				a.viewport, vpCmd = a.viewport.Update(msg)
+			default:
+				a.input, tiCmd = a.input.Update(msg)
+			}
+		} else {
+			a.viewport, vpCmd = a.viewport.Update(msg)
+			a.input, tiCmd = a.input.Update(msg)
+		}
 		cmds = append(cmds, vpCmd, tiCmd)
 	}
 
@@ -461,7 +471,7 @@ func (a *App) rebuildLayout() {
 
 	// Recreate glamour renderer at the new width
 	if r, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStandardStyle("dark"),
 		glamour.WithWordWrap(vpWidth-2),
 	); err == nil {
 		a.renderer = r
@@ -513,13 +523,13 @@ func (a *App) renderMessage(role, content string, ts time.Time) renderMsg {
 	switch role {
 	case "user":
 		label = styleUserLabel.Render("you") + tsStr
-		rendered = lipgloss.JoinVertical(lipgloss.Left, "", label, wrapped)
+		rendered = lipgloss.JoinVertical(lipgloss.Left, "", label, styleMessageBody.Render(wrapped))
 	case "assistant":
 		label = styleAssistantLabel.Render("assistant") + tsStr
-		body := wrapped
+		body := styleMessageBody.Render(wrapped)
 		if a.renderer != nil {
 			if md, err := a.renderer.Render(content); err == nil {
-				body = strings.TrimRight(md, "\n")
+				body = strings.Trim(md, "\n")
 			}
 		}
 		rendered = lipgloss.JoinVertical(lipgloss.Left, "", label, body)
