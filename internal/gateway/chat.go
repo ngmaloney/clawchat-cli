@@ -90,9 +90,17 @@ func (c *Client) GetHistory(sessionKey string, limit int) ([]Message, error) {
 
 	messages := make([]Message, 0, len(result.Messages))
 	for _, m := range result.Messages {
+		// Only show user and assistant text messages — skip tool calls, results, system
+		if m.Role != "user" && m.Role != "assistant" {
+			continue
+		}
+		content := extractContent(m.Content)
+		if content == "" {
+			continue
+		}
 		msg := Message{
 			Role:    m.Role,
-			Content: extractContent(m.Content),
+			Content: content,
 		}
 		switch ts := m.Timestamp.(type) {
 		case float64:
