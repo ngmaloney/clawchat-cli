@@ -324,16 +324,22 @@ func (a *App) handleSlash(cmd string) tea.Cmd {
 	case "/clear":
 		a.messages = nil
 		a.flushViewport()
+		return nil
 	case "/help":
 		a.appendMsg(renderMsg{
-			rendered: styleSystemMsg.Render("Commands: /clear  /quit  /help  │  Scroll: ↑↓ PgUp PgDn"),
+			rendered: styleSystemMsg.Render(
+				"Client: /clear  /quit\n" +
+					"Gateway: /model  /models  /status  /stop  /thinking  /verbose  /compact  /reset  /new\n" +
+					"Scroll: ↑↓ PgUp PgDn",
+			),
 		})
+		return nil
 	default:
-		a.appendMsg(renderMsg{
-			rendered: styleSystemMsg.Render(fmt.Sprintf("Unknown command: %s", cmd)),
-		})
+		// Forward to gateway — it handles /model, /stop, /thinking, /status, etc.
+		a.isWaiting = true
+		a.appendMsg(a.renderMessage("user", cmd, time.Now()))
+		return a.sendCmd(cmd)
 	}
-	return nil
 }
 
 func (a *App) handleChatEvent(ev gateway.ChatEvent) tea.Cmd {
