@@ -198,7 +198,7 @@ func (c *Client) sendHandshake(nonce string) error {
 		"role":        "operator",
 		"scopes":      []string{"operator.admin", "operator.approvals", "operator.pairing"},
 		"auth":        map[string]any{"token": c.opts.Token},
-		"client":      map[string]any{"id": "clawchat-cli", "version": "dev", "platform": "cli", "mode": "cli"},
+		"client":      map[string]any{"id": "cli", "version": "dev", "platform": "cli", "mode": "cli"},
 		"minProtocol": 3,
 		"maxProtocol": 3,
 	}
