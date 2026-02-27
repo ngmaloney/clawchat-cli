@@ -93,6 +93,7 @@ func New(cfg *config.Config) *App {
 	ti.CharLimit = 4096
 	ti.ShowLineNumbers = false
 	ti.SetHeight(3)
+	ti.Prompt = ""
 	// Remove textarea's own border and cursor-line highlight — we style the box ourselves
 	noBorder := lipgloss.NewStyle()
 	ti.FocusedStyle.Base = noBorder
