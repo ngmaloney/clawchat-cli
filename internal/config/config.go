@@ -139,12 +139,13 @@ func (c *Config) SSHEnabled() bool {
 }
 
 // FilePath returns the path to the config file.
+// Always uses ~/.config (XDG convention) regardless of platform.
 func FilePath() string {
 	if v := os.Getenv("CLAWCHAT_CONFIG"); v != "" {
 		return v
 	}
-	dir, _ := os.UserConfigDir()
-	return filepath.Join(dir, "clawchat-cli", "config.yaml")
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "clawchat-cli", "config.yaml")
 }
 
 func defaults() *Config {
