@@ -51,43 +51,33 @@ type renderMsg struct {
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
-// App is the top-level Bubble Tea model.
 type App struct {
 	cfg   *config.Config
 	state appState
 	err   error
 
-	// Connection
 	client *gateway.Client
 	tun    *tunnel.Tunnel
 
-	// Session
 	sessionKey string
 	session    gateway.Session
 
-	// Messages
 	messages    []renderMsg
 	streamRunID string
 	streamBuf   string
 
-	// Events channel (gateway → bubbletea)
 	events chan gateway.ChatEvent
 
-	// UI components
 	viewport viewport.Model
 	input    textinput.Model
 	spin     spinner.Model
 
-	// Layout
 	width  int
 	height int
 	ready  bool
-
-	// Message counter for idempotency keys
 	msgSeq int
 }
 
-// New creates the App model.
 func New(cfg *config.Config) *App {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
@@ -96,7 +86,6 @@ func New(cfg *config.Config) *App {
 	ti := textinput.New()
 	ti.Placeholder = "Type a message…"
 	ti.CharLimit = 4096
-	ti.Width = 80
 	ti.Focus()
 
 	return &App{
@@ -111,10 +100,7 @@ func New(cfg *config.Config) *App {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 func (a *App) Init() tea.Cmd {
-	return tea.Batch(
-		a.spin.Tick,
-		a.connectCmd(),
-	)
+	return tea.Batch(a.spin.Tick, a.connectCmd())
 }
 
 func (a *App) connectCmd() tea.Cmd {
@@ -200,9 +186,7 @@ func (a *App) connectCmd() tea.Cmd {
 }
 
 func waitForEvent(ch <-chan gateway.ChatEvent) tea.Cmd {
-	return func() tea.Msg {
-		return chatEventMsg(<-ch)
-	}
+	return func() tea.Msg { return chatEventMsg(<-ch) }
 }
 
 // ── Update ────────────────────────────────────────────────────────────────────
@@ -245,7 +229,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.session = msg.session
 		a.messages = make([]renderMsg, 0, len(msg.history))
 		for _, m := range msg.history {
-			a.messages = append(a.messages, a.renderMsg(m.Role, m.Content, m.Timestamp))
+			a.messages = append(a.messages, a.renderMessage(m.Role, m.Content, m.Timestamp))
 		}
 		a.state = stateChat
 		a.rebuildLayout()
@@ -289,7 +273,7 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		if strings.HasPrefix(text, "/") {
 			return a.handleSlash(text)
 		}
-		a.appendMsg(a.renderMsg("user", text, time.Now()))
+		a.appendMsg(a.renderMessage("user", text, time.Now()))
 		return a.sendCmd(text)
 	}
 	return nil
@@ -305,13 +289,11 @@ func (a *App) handleSlash(cmd string) tea.Cmd {
 		a.flushViewport()
 	case "/help":
 		a.appendMsg(renderMsg{
-			role:     "system",
-			rendered: styleSystemMsg.Render("  Commands: /clear  /quit  /help  │  Scroll: ↑↓ PgUp PgDn"),
+			rendered: styleSystemMsg.Render("Commands: /clear  /quit  /help  │  Scroll: ↑↓ PgUp PgDn"),
 		})
 	default:
 		a.appendMsg(renderMsg{
-			role:     "system",
-			rendered: styleSystemMsg.Render(fmt.Sprintf("  Unknown command: %s", cmd)),
+			rendered: styleSystemMsg.Render(fmt.Sprintf("Unknown command: %s", cmd)),
 		})
 	}
 	return nil
@@ -334,16 +316,14 @@ func (a *App) handleChatEvent(ev gateway.ChatEvent) {
 		a.streamBuf = ""
 		a.streamRunID = ""
 		if content != "" {
-			a.appendMsg(a.renderMsg("assistant", content, time.Now()))
+			a.appendMsg(a.renderMessage("assistant", content, time.Now()))
 		}
 	case "error":
 		a.streamBuf = ""
 		a.streamRunID = ""
 		a.appendMsg(renderMsg{
-			role:     "system",
-			rendered: styleError.Render("  ⚠ " + ev.ErrorMsg),
+			rendered: styleError.Render("⚠ " + ev.ErrorMsg),
 		})
-		a.flushViewport()
 	}
 }
 
@@ -354,10 +334,7 @@ func (a *App) sendCmd(text string) tea.Cmd {
 	client := a.client
 	return func() tea.Msg {
 		if err := client.SendMessage(sessionKey, text, key); err != nil {
-			return chatEventMsg(gateway.ChatEvent{
-				State:    "error",
-				ErrorMsg: err.Error(),
-			})
+			return chatEventMsg(gateway.ChatEvent{State: "error", ErrorMsg: err.Error()})
 		}
 		return nil
 	}
@@ -389,13 +366,12 @@ func (a *App) viewConnecting() string {
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Center,
-		styleConnectTitle.Render("🦀 ClawChat CLI"),
+		styleAppTitle.Render("🦀 ClawChat CLI"),
 		"",
 		statusLine,
 		"",
 		styleHelp.Render("ctrl+c to quit"),
 	)
-
 	box := styleConnectBox.Render(content)
 	return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, box)
 }
@@ -417,32 +393,16 @@ func (a *App) viewChat() string {
 		return ""
 	}
 
-	// Header bar — full width
-	header := a.renderHeaderBar()
+	header := a.renderHeader()
+	chatBox := styleChatBox.Width(a.width - 2).Render(a.viewport.View())
+	inputBox := styleInputBoxFocused.Width(a.width - 2).Render(a.input.View())
+	help := styleHelp.Padding(0, 1).Render("enter: send   ctrl+c: quit   /help   ↑↓: scroll")
 
-	// Chat box — viewport inside rounded border
-	chatContent := a.viewport.View()
-	chatBox := styleChatBox.
-		Width(a.width - 2). // -2 for border chars
-		Render(chatContent)
-
-	// Input box
-	inputContent := a.input.View()
-	inputBox := styleInputBoxFocused.
-		Width(a.width - 2).
-		Render(inputContent)
-
-	// Help line
-	help := styleHelp.Render("  enter: send   ctrl+c: quit   /help for commands   ↑↓: scroll")
-
-	return strings.Join([]string{header, chatBox, inputBox, help}, "\n")
+	return lipgloss.JoinVertical(lipgloss.Left, header, chatBox, inputBox, help)
 }
 
-func (a *App) renderHeaderBar() string {
+func (a *App) renderHeader() string {
 	left := styleAppTitle.Render("🦀 ClawChat CLI")
-
-	var right string
-	sessionPart := styleSession.Render(a.sessionKey)
 
 	var badges []string
 	if a.tun != nil {
@@ -454,31 +414,34 @@ func (a *App) renderHeaderBar() string {
 		badges = append(badges, styleBadgeConnecting.Render("○ connecting"))
 	}
 
-	right = sessionPart + "  " + strings.Join(badges, "  ")
+	right := lipgloss.JoinHorizontal(lipgloss.Center,
+		styleSession.Render(a.sessionKey),
+		"  ",
+		strings.Join(badges, "  "),
+	)
 
-	gap := a.width - lipgloss.Width(left) - lipgloss.Width(right) - 4 // 4 for padding
+	// Fill the gap between left and right
+	gap := a.width - lipgloss.Width(left) - lipgloss.Width(right) - 4
 	if gap < 1 {
 		gap = 1
 	}
 	line := left + strings.Repeat(" ", gap) + right
+
 	return styleHeaderBar.Width(a.width).Render(line)
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Layout helpers ────────────────────────────────────────────────────────────
 
 func (a *App) rebuildLayout() {
 	if a.width == 0 || a.height == 0 {
 		return
 	}
-
-	// Layout: header(1) + chatBox(border=2 + viewport) + inputBox(border=2 + 1) + help(1)
-	// chatBox border = 2, inputBox border+content = 3, help = 1, header = 1
-	// viewport height = totalHeight - 1 - 2 - 3 - 1 = totalHeight - 7
+	// header(1) + chatBox(border 2 + viewport) + inputBox(border 2 + content 1) + help(1)
 	vpHeight := a.height - 7
 	if vpHeight < 3 {
 		vpHeight = 3
 	}
-	// viewport width = totalWidth - 2 (border) - 2 (padding)
+	// width: border(1 each side) + padding(1 each side) = 4
 	vpWidth := a.width - 4
 	if vpWidth < 20 {
 		vpWidth = 20
@@ -491,9 +454,8 @@ func (a *App) rebuildLayout() {
 		a.viewport.Height = vpHeight
 	}
 	a.ready = true
-
-	// Update input width
-	a.input.Width = a.width - 6 // border(2) + padding(2) + cursor space(2)
+	// Input width: border(2) + padding(2) = 4 total overhead
+	a.input.Width = a.width - 6
 
 	a.flushViewport()
 }
@@ -502,42 +464,64 @@ func (a *App) flushViewport() {
 	if !a.ready {
 		return
 	}
-	var sb strings.Builder
+
+	var blocks []string
 	for _, m := range a.messages {
-		sb.WriteString(m.rendered)
-		sb.WriteString("\n")
+		blocks = append(blocks, m.rendered)
 	}
+
 	if a.streamBuf != "" {
 		label := styleAssistantLabel.Render("assistant")
-		// Word-wrap the streaming content
-		wrapped := wordWrap(a.streamBuf, a.viewport.Width-2)
-		sb.WriteString(fmt.Sprintf("\n  %s\n%s▌\n", label, wrapped))
+		// Use lipgloss width-constrained style for wrapping
+		content := lipgloss.NewStyle().Width(a.viewport.Width - 2).Render(a.streamBuf)
+		streaming := lipgloss.JoinVertical(lipgloss.Left,
+			"",
+			label,
+			content+"▌",
+		)
+		blocks = append(blocks, streaming)
 	}
-	a.viewport.SetContent(sb.String())
+
+	a.viewport.SetContent(strings.Join(blocks, "\n"))
 	a.viewport.GotoBottom()
 }
 
-func (a *App) renderMsg(role, content string, ts time.Time) renderMsg {
+func (a *App) renderMessage(role, content string, ts time.Time) renderMsg {
 	tsStr := ""
 	if !ts.IsZero() {
 		tsStr = "  " + styleTimestamp.Render(ts.Format("15:04"))
 	}
 
-	var rendered string
-	wrapped := wordWrap(content, a.viewport.Width-4)
+	// Use lipgloss Width to handle word-wrap automatically
+	msgWidth := a.viewport.Width - 2
+	if msgWidth < 10 {
+		msgWidth = 10
+	}
+	wrapped := lipgloss.NewStyle().Width(msgWidth).Render(content)
 
+	var label, rendered string
 	switch role {
 	case "user":
-		label := styleUserLabel.Render("  you") + tsStr
-		rendered = fmt.Sprintf("\n%s\n%s", label, indentBlock(wrapped, "  "))
+		label = styleUserLabel.Render("you") + tsStr
 	case "assistant":
-		label := styleAssistantLabel.Render("  assistant") + tsStr
-		rendered = fmt.Sprintf("\n%s\n%s", label, indentBlock(wrapped, "  "))
+		label = styleAssistantLabel.Render("assistant") + tsStr
 	default:
-		rendered = styleSystemMsg.Render("  " + content)
+		return renderMsg{
+			role:      role,
+			content:   content,
+			rendered:  styleSystemMsg.Render(content),
+			timestamp: ts,
+		}
 	}
 
-	return renderMsg{role: role, content: content, rendered: rendered, timestamp: ts}
+	rendered = lipgloss.JoinVertical(lipgloss.Left, "", label, wrapped)
+
+	return renderMsg{
+		role:      role,
+		content:   content,
+		rendered:  rendered,
+		timestamp: ts,
+	}
 }
 
 func (a *App) appendMsg(m renderMsg) {
@@ -552,40 +536,4 @@ func (a *App) cleanup() {
 	if a.tun != nil {
 		a.tun.Stop()
 	}
-}
-
-// wordWrap wraps text at word boundaries for a given width.
-func wordWrap(text string, width int) string {
-	if width <= 0 {
-		return text
-	}
-	words := strings.Fields(text)
-	if len(words) == 0 {
-		return text
-	}
-	var lines []string
-	var line string
-	for _, w := range words {
-		if line == "" {
-			line = w
-		} else if len(line)+1+len(w) <= width {
-			line += " " + w
-		} else {
-			lines = append(lines, line)
-			line = w
-		}
-	}
-	if line != "" {
-		lines = append(lines, line)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// indentBlock adds a prefix to every line.
-func indentBlock(text, prefix string) string {
-	lines := strings.Split(text, "\n")
-	for i, l := range lines {
-		lines[i] = prefix + l
-	}
-	return strings.Join(lines, "\n")
 }
