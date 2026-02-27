@@ -3,13 +3,26 @@
 package gateway
 
 import (
+	"os"
 	"testing"
 )
 
-const testToken = "a099efc7c886bf42878ddf0415691d0e2973637f557689bc072cc27229557c12"
-const testGateway = "ws://127.0.0.1:18789"
+func getTestConfig(t *testing.T) (gatewayURL, token string) {
+	t.Helper()
+	token = os.Getenv("CLAWCHAT_TEST_TOKEN")
+	gatewayURL = os.Getenv("CLAWCHAT_TEST_GATEWAY")
+	if gatewayURL == "" {
+		gatewayURL = "ws://127.0.0.1:18789"
+	}
+	if token == "" {
+		t.Skip("CLAWCHAT_TEST_TOKEN not set — skipping integration test")
+	}
+	return
+}
 
 func TestDeviceIdentity(t *testing.T) {
+	_, token := getTestConfig(t)
+
 	dev, err := loadOrCreateDevice()
 	if err != nil {
 		t.Fatalf("loadOrCreateDevice: %v", err)
@@ -17,7 +30,7 @@ func TestDeviceIdentity(t *testing.T) {
 	t.Logf("device ID: %s", dev.DeviceID)
 	t.Logf("public key: %s", dev.PublicKey[:16]+"...")
 
-	sig, signedAt, err := dev.sign("testnonce", testToken, "operator", []string{"operator.read", "operator.write"})
+	sig, signedAt, err := dev.sign("testnonce", token, "operator", []string{"operator.read", "operator.write"})
 	if err != nil {
 		t.Fatalf("sign: %v", err)
 	}
@@ -26,9 +39,11 @@ func TestDeviceIdentity(t *testing.T) {
 }
 
 func TestGatewayConnect(t *testing.T) {
+	gatewayURL, token := getTestConfig(t)
+
 	client := New(Options{
-		URL:   testGateway,
-		Token: testToken,
+		URL:   gatewayURL,
+		Token: token,
 	})
 
 	if err := client.Connect(); err != nil {

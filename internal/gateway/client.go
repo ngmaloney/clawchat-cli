@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -199,15 +198,10 @@ func (c *Client) sendHandshake(nonce string) error {
 
 	// Build device identity — required for the gateway to grant scopes.
 	var deviceField map[string]any
-	var debugMsg string
 	dev, devErr := loadOrCreateDevice()
-	if devErr != nil {
-		debugMsg = fmt.Sprintf("loadOrCreateDevice error: %v", devErr)
-	} else {
+	if devErr == nil {
 		sig, signedAt, signErr := dev.sign(nonce, c.opts.Token, "operator", scopes)
-		if signErr != nil {
-			debugMsg = fmt.Sprintf("sign error: %v", signErr)
-		} else {
+		if signErr == nil {
 			deviceField = map[string]any{
 				"id":        dev.DeviceID,
 				"publicKey": dev.PublicKey,
@@ -215,13 +209,7 @@ func (c *Client) sendHandshake(nonce string) error {
 				"signedAt":  signedAt,
 				"nonce":     nonce,
 			}
-			debugMsg = fmt.Sprintf("device ok: id=%s", dev.DeviceID[:8])
 		}
-	}
-	// Write debug to file so we can inspect regardless of TUI
-	if f, err := os.OpenFile("/tmp/clawchat-debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-		fmt.Fprintf(f, "[handshake] %s | deviceField=%v\n", debugMsg, deviceField != nil)
-		f.Close()
 	}
 
 	params := map[string]any{
