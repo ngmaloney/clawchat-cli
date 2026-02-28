@@ -26,6 +26,7 @@ type Config struct {
 	Token      string `yaml:"token"`
 	SessionKey string `yaml:"session_key"`
 	SSH        *SSH   `yaml:"ssh,omitempty"`
+	Backend    string `yaml:"backend"` // "openclaw" (default) or "zeroclaw"
 }
 
 // Load reads config from file, applies env overrides, then flag overrides.
@@ -50,6 +51,9 @@ func Load() (*Config, error) {
 	if v := os.Getenv("CLAWCHAT_SESSION"); v != "" {
 		cfg.SessionKey = v
 	}
+	if v := os.Getenv("CLAWCHAT_BACKEND"); v != "" {
+		cfg.Backend = v
+	}
 
 	// SSH env
 	if v := os.Getenv("CLAWCHAT_SSH_HOST"); v != "" {
@@ -61,15 +65,16 @@ func Load() (*Config, error) {
 
 	// 3. CLI flags (defined here so help text is accurate)
 	var (
-		flagGateway    = flag.String("gateway", cfg.GatewayURL, "Gateway WebSocket URL (ws:// or wss://)")
-		flagToken      = flag.String("token", cfg.Token, "Gateway auth token")
-		flagSession    = flag.String("session", cfg.SessionKey, "Session key to connect to (default: first available)")
-		flagSSHHost    = flag.String("ssh-host", "", "SSH tunnel host")
-		flagSSHPort    = flag.Int("ssh-port", 22, "SSH tunnel port")
-		flagSSHUser    = flag.String("ssh-user", "", "SSH tunnel user")
-		flagSSHKey     = flag.String("ssh-key", "", "Path to SSH private key")
-		flagSSHRemote  = flag.Int("ssh-remote-port", 18789, "Remote gateway port to forward")
-		flagVersion    = flag.Bool("version", false, "Print version and exit")
+		flagGateway   = flag.String("gateway", cfg.GatewayURL, "Gateway WebSocket URL (ws:// or wss://)")
+		flagToken     = flag.String("token", cfg.Token, "Gateway auth token")
+		flagSession   = flag.String("session", cfg.SessionKey, "Session key to connect to (default: first available)")
+		flagBackend   = flag.String("backend", cfg.Backend, `Backend to use: "openclaw" (default) or "zeroclaw"`)
+		flagSSHHost   = flag.String("ssh-host", "", "SSH tunnel host")
+		flagSSHPort   = flag.Int("ssh-port", 22, "SSH tunnel port")
+		flagSSHUser   = flag.String("ssh-user", "", "SSH tunnel user")
+		flagSSHKey    = flag.String("ssh-key", "", "Path to SSH private key")
+		flagSSHRemote = flag.Int("ssh-remote-port", 18789, "Remote gateway port to forward")
+		flagVersion   = flag.Bool("version", false, "Print version and exit")
 	)
 	flag.Parse()
 
@@ -87,6 +92,9 @@ func Load() (*Config, error) {
 	if *flagSession != "" {
 		cfg.SessionKey = *flagSession
 	}
+	if *flagBackend != "" {
+		cfg.Backend = *flagBackend
+	}
 	if *flagSSHHost != "" {
 		if cfg.SSH == nil {
 			cfg.SSH = &SSH{}
@@ -96,6 +104,13 @@ func Load() (*Config, error) {
 		cfg.SSH.User = *flagSSHUser
 		cfg.SSH.KeyPath = *flagSSHKey
 		cfg.SSH.RemotePort = *flagSSHRemote
+	}
+
+	// Apply backend-specific defaults when backend is zeroclaw.
+	if cfg.Backend == "zeroclaw" {
+		if cfg.GatewayURL == "" || cfg.GatewayURL == "ws://localhost:18789" {
+			cfg.GatewayURL = "ws://localhost:42617"
+		}
 	}
 
 	return cfg, nil
@@ -122,7 +137,14 @@ func (c *Config) Validate() error {
 	if c.Token == "" {
 		return fmt.Errorf("auth token is required (--token or OPENCLAW_TOKEN)")
 	}
-	if c.SSH != nil {
+	switch c.Backend {
+	case "", "openclaw", "zeroclaw":
+		// valid
+	default:
+		return fmt.Errorf("unknown backend %q: must be \"openclaw\" or \"zeroclaw\"", c.Backend)
+	}
+	// SSH tunnel is only applicable to the openclaw backend.
+	if c.SSH != nil && c.Backend != "zeroclaw" {
 		if c.SSH.Host == "" {
 			return fmt.Errorf("ssh-host is required when using SSH tunnel")
 		}
@@ -131,6 +153,11 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// IsZeroClaw returns true when the zeroclaw backend is active.
+func (c *Config) IsZeroClaw() bool {
+	return c.Backend == "zeroclaw"
 }
 
 // SSHEnabled returns true if SSH tunnel is configured.
@@ -151,6 +178,7 @@ func FilePath() string {
 func defaults() *Config {
 	return &Config{
 		GatewayURL: "ws://localhost:18789",
+		Backend:    "openclaw",
 	}
 }
 

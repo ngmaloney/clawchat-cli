@@ -34,7 +34,7 @@ type connectDoneMsg struct {
 	sessionKey string
 	session    gateway.Session
 	history    []gateway.Message
-	client     *gateway.Client
+	client     gateway.Gateway
 	tun        *tunnel.Tunnel
 }
 
@@ -61,7 +61,7 @@ type App struct {
 	state appState
 	err   error
 
-	client *gateway.Client
+	client gateway.Gateway
 	tun    *tunnel.Tunnel
 
 	sessionKey string
@@ -126,6 +126,36 @@ func (a *App) Init() tea.Cmd {
 func (a *App) connectCmd() tea.Cmd {
 	events := a.events
 	return func() tea.Msg {
+		// ── ZeroClaw backend ────────────────────────────────────────────────
+		if a.cfg.IsZeroClaw() {
+			wsURL := a.cfg.GatewayURL + "/ws/chat"
+			zc := gateway.NewZeroClaw(gateway.ZeroClawOptions{
+				URL:   wsURL,
+				Token: a.cfg.Token,
+				OnEvent: func(event string, payload map[string]any) {
+					if event == "chat" {
+						ev := gateway.ParseChatEvent(payload)
+						select {
+						case events <- ev:
+						default:
+						}
+					}
+				},
+			})
+			if err := zc.Connect(); err != nil {
+				return connectErrMsg{fmt.Errorf("zeroclaw: %w", err)}
+			}
+			session := gateway.Session{Key: "default", Label: "ZeroClaw"}
+			return connectDoneMsg{
+				sessionKey: session.Key,
+				session:    session,
+				history:    nil,
+				client:     zc,
+				tun:        nil,
+			}
+		}
+
+		// ── OpenClaw backend (default) ───────────────────────────────────────
 		var tun *tunnel.Tunnel
 		gatewayURL := a.cfg.GatewayURL
 
@@ -323,7 +353,9 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		a.cleanup()
 		return tea.Quit
 	case "ctrl+s":
-		return a.openPickerCmd()
+		if !a.cfg.IsZeroClaw() {
+			return a.openPickerCmd()
+		}
 	case "enter":
 		text := strings.TrimSpace(a.input.Value())
 		if text == "" {
@@ -350,16 +382,22 @@ func (a *App) handleSlash(cmd string) tea.Cmd {
 		a.flushViewport()
 		return nil
 	case "/help":
+		helpLines := "Client: /clear  /sessions  /quit\n" +
+			"Gateway: /model  /models  /status  /stop  /thinking  /verbose  /compact  /reset  /new\n" +
+			"Scroll: ↑↓ PgUp PgDn  │  Switch session: ctrl+s"
+		if a.cfg.IsZeroClaw() {
+			helpLines = "Client: /clear  /quit\n" +
+				"Scroll: ↑↓ PgUp PgDn"
+		}
 		a.appendMsg(renderMsg{
-			rendered: styleSystemMsg.Render(
-				"Client: /clear  /sessions  /quit\n" +
-					"Gateway: /model  /models  /status  /stop  /thinking  /verbose  /compact  /reset  /new\n" +
-					"Scroll: ↑↓ PgUp PgDn  │  Switch session: ctrl+s",
-			),
+			rendered: styleSystemMsg.Render(helpLines),
 		})
 		return nil
 	case "/sessions":
-		return a.openPickerCmd()
+		if !a.cfg.IsZeroClaw() {
+			return a.openPickerCmd()
+		}
+		return nil
 	default:
 		// Forward to gateway — it handles /model, /stop, /thinking, /status, etc.
 		a.isWaiting = true
@@ -582,7 +620,11 @@ func (a *App) viewChat() string {
 	header := a.renderHeader()
 	chatBox := styleChatBox.Width(a.width - 2).Render(a.viewport.View())
 	inputBox := styleInputBoxFocused.Width(a.width - 2).Render(a.input.View())
-	help := styleHelp.Padding(0, 1).Render("enter: send   ctrl+s: sessions   ctrl+c: quit   /help   ↑↓: scroll")
+	helpText := "enter: send   ctrl+s: sessions   ctrl+c: quit   /help   ↑↓: scroll"
+	if a.cfg.IsZeroClaw() {
+		helpText = "enter: send   ctrl+c: quit   /help   ↑↓: scroll"
+	}
+	help := styleHelp.Padding(0, 1).Render(helpText)
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, chatBox, inputBox, help)
 }
@@ -591,6 +633,9 @@ func (a *App) renderHeader() string {
 	left := styleAppTitle.Render("🦀 ClawChat CLI")
 
 	var badges []string
+	if a.cfg.IsZeroClaw() {
+		badges = append(badges, styleBadgeSSH.Render(" ZeroClaw "))
+	}
 	if a.tun != nil {
 		badges = append(badges, styleBadgeSSH.Render(" SSH "))
 	}
