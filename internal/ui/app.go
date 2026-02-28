@@ -126,9 +126,22 @@ func (a *App) Init() tea.Cmd {
 func (a *App) connectCmd() tea.Cmd {
 	events := a.events
 	return func() tea.Msg {
+		// ── SSH tunnel (shared by both backends) ────────────────────────────
+		var tun *tunnel.Tunnel
+		gatewayURL := a.cfg.GatewayURL
+
+		if a.cfg.SSHEnabled() {
+			t, err := tunnel.Start(a.cfg.SSH)
+			if err != nil {
+				return connectErrMsg{fmt.Errorf("SSH tunnel: %w", err)}
+			}
+			tun = t
+			gatewayURL = t.GatewayURL()
+		}
+
 		// ── ZeroClaw backend ────────────────────────────────────────────────
 		if a.cfg.IsZeroClaw() {
-			wsURL := a.cfg.GatewayURL + "/ws/chat"
+			wsURL := gatewayURL + "/ws/chat"
 			zc := gateway.NewZeroClaw(gateway.ZeroClawOptions{
 				URL:   wsURL,
 				Token: a.cfg.Token,
@@ -143,6 +156,9 @@ func (a *App) connectCmd() tea.Cmd {
 				},
 			})
 			if err := zc.Connect(); err != nil {
+				if tun != nil {
+					tun.Stop()
+				}
 				return connectErrMsg{fmt.Errorf("zeroclaw: %w", err)}
 			}
 			session := gateway.Session{Key: "default", Label: "ZeroClaw"}
@@ -151,22 +167,11 @@ func (a *App) connectCmd() tea.Cmd {
 				session:    session,
 				history:    nil,
 				client:     zc,
-				tun:        nil,
+				tun:        tun,
 			}
 		}
 
 		// ── OpenClaw backend (default) ───────────────────────────────────────
-		var tun *tunnel.Tunnel
-		gatewayURL := a.cfg.GatewayURL
-
-		if a.cfg.SSHEnabled() {
-			t, err := tunnel.Start(a.cfg.SSH)
-			if err != nil {
-				return connectErrMsg{fmt.Errorf("SSH tunnel: %w", err)}
-			}
-			tun = t
-			gatewayURL = t.GatewayURL()
-		}
 
 		client := gateway.New(gateway.Options{
 			URL:   gatewayURL,
