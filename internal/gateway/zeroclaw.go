@@ -337,9 +337,15 @@ func filterToolCalls(s string) string {
 	s = reToolCallBlock.ReplaceAllString(s, "")
 	s = reToolResultBlock.ReplaceAllString(s, "")
 
-	// Replace unclosed <tool_call> (still streaming) with a tidy indicator.
-	if idx := strings.Index(s, "<tool_call>"); idx != -1 {
-		s = strings.TrimRight(s[:idx], " \n") + "\n[using tool…]"
+	// Replace unclosed opening tags (still streaming) with a tidy indicator.
+	for _, tag := range []string{"<tool_call>", "<tool_result>"} {
+		if idx := strings.Index(s, tag); idx != -1 {
+			s = strings.TrimRight(s[:idx], " \n")
+			if tag == "<tool_call>" {
+				s += "\n[using tool…]"
+			}
+			break
+		}
 	}
 
 	// Collapse leftover blank lines from removed blocks.
