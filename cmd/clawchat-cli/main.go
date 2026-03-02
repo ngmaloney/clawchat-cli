@@ -26,8 +26,12 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintf(os.Stderr, "clawchat-cli: %v\n\n", err)
 		fmt.Fprintf(os.Stderr, "Config file: %s\n\n", config.FilePath())
-		fmt.Fprintf(os.Stderr, "Example config:\n")
-		fmt.Fprintf(os.Stderr, "  gateway_url: ws://pinchy.home.wrox.us:18789\n")
+		fmt.Fprintf(os.Stderr, "Example config:\n\n")
+		fmt.Fprintf(os.Stderr, "  # ZeroClaw:\n")
+		fmt.Fprintf(os.Stderr, "  gateway_url: ws://localhost:42617/ws/chat\n")
+		fmt.Fprintf(os.Stderr, "  token: zc_...  # obtain via: curl -X POST http://localhost:42617/pair -H 'X-Pairing-Code: <code>'\n\n")
+		fmt.Fprintf(os.Stderr, "  # OpenClaw:\n")
+		fmt.Fprintf(os.Stderr, "  gateway_url: ws://localhost:18789\n")
 		fmt.Fprintf(os.Stderr, "  token: your-gateway-token\n")
 		os.Exit(1)
 	}
