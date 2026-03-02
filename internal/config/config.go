@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
@@ -25,8 +27,9 @@ type Config struct {
 	GatewayURL string `yaml:"gateway_url"`
 	Token      string `yaml:"token"`
 	SessionKey string `yaml:"session_key"`
-	SSH        *SSH   `yaml:"ssh,omitempty"`
-	Backend    string `yaml:"backend"` // "openclaw" (default) or "zeroclaw"
+	SSH               *SSH   `yaml:"ssh,omitempty"`
+	Backend           string `yaml:"backend"`           // "openclaw" (default) or "zeroclaw"
+	ZeroClawSessionID string `yaml:"zeroclaw_session_id,omitempty"` // persistent session ID for ZeroClaw history
 }
 
 // Load reads config from file, applies env overrides, then flag overrides.
@@ -201,4 +204,23 @@ func ExpandTilde(path string) string {
 		}
 	}
 	return path
+}
+
+// GenerateSessionID generates a random hex session ID for ZeroClaw history continuity.
+func GenerateSessionID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "default"
+	}
+	return hex.EncodeToString(b)
+}
+
+// EnsureZeroClawSessionID generates and saves a session ID if one doesn't exist.
+// Returns the (possibly new) session ID.
+func (c *Config) EnsureZeroClawSessionID() string {
+	if c.ZeroClawSessionID == "" {
+		c.ZeroClawSessionID = GenerateSessionID()
+		_ = c.Save()
+	}
+	return c.ZeroClawSessionID
 }

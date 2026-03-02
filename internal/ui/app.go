@@ -142,9 +142,11 @@ func (a *App) connectCmd() tea.Cmd {
 		// ── ZeroClaw backend ────────────────────────────────────────────────
 		if a.cfg.IsZeroClaw() {
 			wsURL := gatewayURL + "/ws/chat"
+			sessionID := a.cfg.EnsureZeroClawSessionID()
 			zc := gateway.NewZeroClaw(gateway.ZeroClawOptions{
-				URL:   wsURL,
-				Token: a.cfg.Token,
+				URL:       wsURL,
+				Token:     a.cfg.Token,
+				SessionID: sessionID,
 				OnEvent: func(event string, payload map[string]any) {
 					if event == "chat" {
 						ev := gateway.ParseChatEvent(payload)
@@ -161,11 +163,12 @@ func (a *App) connectCmd() tea.Cmd {
 				}
 				return connectErrMsg{fmt.Errorf("zeroclaw: %w", err)}
 			}
+			history, _ := zc.GetHistory("default", 50)
 			session := gateway.Session{Key: "default", Label: "ZeroClaw"}
 			return connectDoneMsg{
 				sessionKey: session.Key,
 				session:    session,
-				history:    nil,
+				history:    history,
 				client:     zc,
 				tun:        tun,
 			}

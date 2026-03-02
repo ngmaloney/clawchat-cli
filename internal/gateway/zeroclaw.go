@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -14,14 +15,18 @@ import (
 // Protocol: no handshake, no sessions — connection is ready immediately.
 // Auth is passed as an Authorization header on the WebSocket upgrade.
 type ZeroClawClient struct {
-	url     string
-	token   string
-	onEvent EventHandler
+	url       string
+	token     string
+	sessionID string
+	onEvent   EventHandler
 
 	mu        sync.Mutex
 	conn      *websocket.Conn
 	status    Status
 	streamBuf string // accumulated streaming tokens
+
+	histOnce sync.Once
+	histCh   chan []Message // receives history push on connect
 
 	done chan struct{}
 	once sync.Once
@@ -29,19 +34,22 @@ type ZeroClawClient struct {
 
 // ZeroClawOptions configures a ZeroClawClient.
 type ZeroClawOptions struct {
-	URL     string
-	Token   string
-	OnEvent EventHandler
+	URL       string
+	Token     string
+	SessionID string // persistent session ID for history continuity
+	OnEvent   EventHandler
 }
 
 // NewZeroClaw creates a new ZeroClawClient. Call Connect() to establish the connection.
 func NewZeroClaw(opts ZeroClawOptions) *ZeroClawClient {
 	return &ZeroClawClient{
-		url:     opts.URL,
-		token:   opts.Token,
-		onEvent: opts.OnEvent,
-		status:  StatusDisconnected,
-		done:    make(chan struct{}),
+		url:       opts.URL,
+		token:     opts.Token,
+		sessionID: opts.SessionID,
+		onEvent:   opts.OnEvent,
+		status:    StatusDisconnected,
+		histCh:    make(chan []Message, 1),
+		done:      make(chan struct{}),
 	}
 }
 
@@ -51,7 +59,7 @@ func NewZeroClaw(opts ZeroClawOptions) *ZeroClawClient {
 func (z *ZeroClawClient) Connect() error {
 	z.setStatus(StatusConnecting)
 
-	// Build the URL with the token as a query parameter.
+	// Build the URL with token and session_id as query parameters.
 	u, err := url.Parse(z.url)
 	if err != nil {
 		z.setStatus(StatusError)
@@ -59,15 +67,28 @@ func (z *ZeroClawClient) Connect() error {
 	}
 	q := u.Query()
 	q.Set("token", z.token)
+	if z.sessionID != "" {
+		q.Set("session_id", z.sessionID)
+	}
 	u.RawQuery = q.Encode()
 
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+z.token)
 
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
+	conn, resp, err := websocket.DefaultDialer.Dial(u.String(), header)
 	if err != nil {
 		z.setStatus(StatusError)
-		return fmt.Errorf("zeroclaw dial: %w", err)
+		if resp != nil {
+			switch resp.StatusCode {
+			case 401, 403:
+				return fmt.Errorf("authentication failed (HTTP %d) — token missing or invalid. Pair first: POST /pair with header X-Pairing-Code, then set token in config", resp.StatusCode)
+			case 404:
+				return fmt.Errorf("gateway endpoint not found (HTTP 404) — check gateway_url (ZeroClaw: ws://<host>:42617/ws/chat, OpenClaw: ws://<host>:18789)")
+			default:
+				return fmt.Errorf("gateway returned HTTP %d — %w", resp.StatusCode, err)
+			}
+		}
+		return fmt.Errorf("could not reach gateway at %s — is it running? (%w)", z.url, err)
 	}
 
 	z.mu.Lock()
@@ -106,9 +127,18 @@ func (z *ZeroClawClient) ListSessions() ([]Session, error) {
 	return []Session{{Key: "default", Label: "ZeroClaw"}}, nil
 }
 
-// GetHistory is a no-op for ZeroClaw — it has no history API.
+// GetHistory waits briefly for the history push that ZeroClaw sends on connect,
+// then returns the messages. Returns empty slice if no history arrives in time.
 func (z *ZeroClawClient) GetHistory(sessionKey string, limit int) ([]Message, error) {
-	return nil, nil
+	select {
+	case msgs := <-z.histCh:
+		if limit > 0 && len(msgs) > limit {
+			msgs = msgs[len(msgs)-limit:]
+		}
+		return msgs, nil
+	case <-time.After(3 * time.Second):
+		return nil, nil
+	}
 }
 
 // SendMessage sends a chat message to ZeroClaw and returns a synthetic run ID.
@@ -185,13 +215,31 @@ func (z *ZeroClawClient) readLoop() {
 // ZeroClaw `chunk` events carry only the new token; we accumulate them here so
 // the UI sees the full streamed text on every delta (matching OpenClaw convention).
 func (z *ZeroClawClient) dispatchFrame(frame map[string]any) {
-	if z.onEvent == nil {
-		return
-	}
-
 	typ, _ := frame["type"].(string)
 
 	switch typ {
+	case "history":
+		// Server sends this once on connect with past messages for the session.
+		// Parse and deliver via histCh so GetHistory() can return them.
+		var msgs []Message
+		if raw, ok := frame["messages"].([]any); ok {
+			for _, item := range raw {
+				m, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				role, _ := m["role"].(string)
+				content, _ := m["content"].(string)
+				if (role == "user" || role == "assistant") && content != "" {
+					msgs = append(msgs, Message{Role: role, Content: content})
+				}
+			}
+		}
+		// Non-blocking send — histCh is buffered(1); GetHistory drains it.
+		z.histOnce.Do(func() {
+			z.histCh <- msgs
+		})
+
 	case "chunk":
 		// New token — accumulate and emit as delta with full text so far.
 		token, _ := frame["content"].(string)
@@ -200,17 +248,18 @@ func (z *ZeroClawClient) dispatchFrame(frame map[string]any) {
 		accumulated := z.streamBuf
 		z.mu.Unlock()
 
-		z.onEvent("chat", map[string]any{
-			"state": "delta",
-			"message": map[string]any{
-				"content": accumulated,
-			},
-			"runId": "zc-local",
-		})
+		if z.onEvent != nil {
+			z.onEvent("chat", map[string]any{
+				"state": "delta",
+				"message": map[string]any{
+					"content": accumulated,
+				},
+				"runId": "zc-local",
+			})
+		}
 
 	case "done":
-		// Full response — emit as final.  Use full_response; fall back to accumulated
-		// stream buffer in case no chunks were sent.
+		// Full response — emit as final.
 		fullResponse, _ := frame["full_response"].(string)
 		z.mu.Lock()
 		if fullResponse == "" {
@@ -219,45 +268,48 @@ func (z *ZeroClawClient) dispatchFrame(frame map[string]any) {
 		z.streamBuf = ""
 		z.mu.Unlock()
 
-		z.onEvent("chat", map[string]any{
-			"state": "final",
-			"message": map[string]any{
-				"content": fullResponse,
-			},
-			"runId": "zc-local",
-		})
+		if z.onEvent != nil {
+			z.onEvent("chat", map[string]any{
+				"state": "final",
+				"message": map[string]any{
+					"content": fullResponse,
+				},
+				"runId": "zc-local",
+			})
+		}
 
 	case "error":
-		// Error from the server.
 		msg, _ := frame["message"].(string)
 		z.mu.Lock()
 		z.streamBuf = ""
 		z.mu.Unlock()
 
-		z.onEvent("chat", map[string]any{
-			"state":        "error",
-			"errorMessage": msg,
-			"runId":        "zc-local",
-		})
+		if z.onEvent != nil {
+			z.onEvent("chat", map[string]any{
+				"state":        "error",
+				"errorMessage": msg,
+				"runId":        "zc-local",
+			})
+		}
 
 	case "tool_call":
-		// Tool being invoked — show name as a brief streaming indicator.
 		name, _ := frame["name"].(string)
 		z.mu.Lock()
 		note := fmt.Sprintf("[calling %s…]", name)
 		z.streamBuf = note
 		z.mu.Unlock()
 
-		z.onEvent("chat", map[string]any{
-			"state": "delta",
-			"message": map[string]any{
-				"content": note,
-			},
-			"runId": "zc-local",
-		})
+		if z.onEvent != nil {
+			z.onEvent("chat", map[string]any{
+				"state": "delta",
+				"message": map[string]any{
+					"content": note,
+				},
+				"runId": "zc-local",
+			})
+		}
 
 	case "tool_result":
-		// Tool result — clear tool indicator; real content follows in done/chunk.
 		z.mu.Lock()
 		z.streamBuf = ""
 		z.mu.Unlock()
