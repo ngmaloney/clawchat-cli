@@ -8,6 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"regexp"
+	"strings"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -245,7 +248,7 @@ func (z *ZeroClawClient) dispatchFrame(frame map[string]any) {
 		token, _ := frame["content"].(string)
 		z.mu.Lock()
 		z.streamBuf += token
-		accumulated := z.streamBuf
+		accumulated := filterToolCalls(z.streamBuf)
 		z.mu.Unlock()
 
 		if z.onEvent != nil {
@@ -265,6 +268,7 @@ func (z *ZeroClawClient) dispatchFrame(frame map[string]any) {
 		if fullResponse == "" {
 			fullResponse = z.streamBuf
 		}
+		fullResponse = filterToolCalls(fullResponse)
 		z.streamBuf = ""
 		z.mu.Unlock()
 
@@ -314,6 +318,29 @@ func (z *ZeroClawClient) dispatchFrame(frame map[string]any) {
 		z.streamBuf = ""
 		z.mu.Unlock()
 	}
+}
+
+
+// filterToolCalls strips <tool_call> and <tool_result> blocks from streamed
+// content so they don't appear verbatim in the chat UI.
+// Complete blocks are removed entirely. An unclosed <tool_call> block is
+// replaced with a brief "[using tool…]" indicator.
+var (
+	reToolCallBlock   = regexp.MustCompile(`(?s)<tool_call>.*?</tool_call>`)
+	reToolResultBlock = regexp.MustCompile(`(?s)<tool_result>.*?</tool_result>`)
+)
+
+func filterToolCalls(s string) string {
+	// Strip complete blocks.
+	s = reToolCallBlock.ReplaceAllString(s, "")
+	s = reToolResultBlock.ReplaceAllString(s, "")
+
+	// Replace unclosed <tool_call> (still streaming) with a tidy indicator.
+	if idx := strings.Index(s, "<tool_call>"); idx != -1 {
+		s = strings.TrimRight(s[:idx], " \n") + "\n[using tool…]"
+	}
+
+	return strings.TrimSpace(s)
 }
 
 func (z *ZeroClawClient) setStatus(s Status) {
