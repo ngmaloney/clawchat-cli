@@ -91,10 +91,20 @@ func (c *Client) Connect() error {
 	q.Set("token", c.opts.Token)
 	u.RawQuery = q.Encode()
 
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
 		c.setStatus(StatusError)
-		return fmt.Errorf("websocket dial: %w", err)
+		if resp != nil {
+			switch resp.StatusCode {
+			case 401, 403:
+				return fmt.Errorf("authentication failed (HTTP %d) — token missing or invalid. Pair first: POST /pair with header X-Pairing-Code, then set token in config", resp.StatusCode)
+			case 404:
+				return fmt.Errorf("gateway endpoint not found (HTTP 404) — check gateway_url (ZeroClaw: ws://<host>:42617/ws/chat, OpenClaw: ws://<host>:18789)")
+			default:
+				return fmt.Errorf("gateway returned HTTP %d — %w", resp.StatusCode, err)
+			}
+		}
+		return fmt.Errorf("could not reach gateway at %s — is it running? (%w)", c.opts.URL, err)
 	}
 
 	c.mu.Lock()
