@@ -136,7 +136,7 @@ func (z *ZeroClawClient) GetHistory(sessionKey string, limit int) ([]Message, er
 			msgs = msgs[len(msgs)-limit:]
 		}
 		return msgs, nil
-	case <-time.After(3 * time.Second):
+	case <-time.After(500 * time.Millisecond):
 		return nil, nil
 	}
 }
