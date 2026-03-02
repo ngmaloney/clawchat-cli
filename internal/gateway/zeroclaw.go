@@ -75,10 +75,15 @@ func (z *ZeroClawClient) Connect() error {
 	}
 	u.RawQuery = q.Encode()
 
+	// Pass token as a subprotocol (zeroclaw.v1 + bearer.<token>) matching the
+	// official ZeroClaw web client — auth via query param/header is a fallback.
+	dialer := websocket.Dialer{
+		Subprotocols: []string{"zeroclaw.v1", "bearer." + z.token},
+	}
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+z.token)
 
-	conn, resp, err := websocket.DefaultDialer.Dial(u.String(), header)
+	conn, resp, err := dialer.Dial(u.String(), header)
 	if err != nil {
 		z.setStatus(StatusError)
 		if resp != nil {
