@@ -330,6 +330,8 @@ var (
 	reToolResultBlock = regexp.MustCompile(`(?s)<tool_result>.*?</tool_result>`)
 )
 
+var reExtraNewlines = regexp.MustCompile(`\n{3,}`)
+
 func filterToolCalls(s string) string {
 	// Strip complete blocks.
 	s = reToolCallBlock.ReplaceAllString(s, "")
@@ -339,6 +341,9 @@ func filterToolCalls(s string) string {
 	if idx := strings.Index(s, "<tool_call>"); idx != -1 {
 		s = strings.TrimRight(s[:idx], " \n") + "\n[using tool…]"
 	}
+
+	// Collapse leftover blank lines from removed blocks.
+	s = reExtraNewlines.ReplaceAllString(s, "\n\n")
 
 	return strings.TrimSpace(s)
 }
