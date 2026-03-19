@@ -26,14 +26,28 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintf(os.Stderr, "clawchat-cli: %v\n\n", err)
 		fmt.Fprintf(os.Stderr, "Config file: %s\n\n", config.FilePath())
-		fmt.Fprintf(os.Stderr, "Example config:\n")
-		fmt.Fprintf(os.Stderr, "  gateway_url: ws://pinchy.home.wrox.us:18789\n")
-		fmt.Fprintf(os.Stderr, "  token: your-gateway-token\n")
+		if cfg.IsOllama() {
+			fmt.Fprintf(os.Stderr, "Example (Ollama):\n")
+			fmt.Fprintf(os.Stderr, "  backend: ollama\n")
+			fmt.Fprintf(os.Stderr, "  ollama:\n")
+			fmt.Fprintf(os.Stderr, "    url: http://llama.home.wrox.us:11434\n")
+			fmt.Fprintf(os.Stderr, "    model: qwen2.5:14b\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "Example (OpenClaw):\n")
+			fmt.Fprintf(os.Stderr, "  gateway_url: ws://pinchy.home.wrox.us:18789\n")
+			fmt.Fprintf(os.Stderr, "  token: your-gateway-token\n")
+		}
 		os.Exit(1)
 	}
 
-	app := ui.New(cfg)
-	p := tea.NewProgram(app, tea.WithAltScreen())
+	var model tea.Model
+	if cfg.IsOllama() {
+		model = ui.NewOllama(cfg)
+	} else {
+		model = ui.New(cfg)
+	}
+
+	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "clawchat-cli: %v\n", err)
 		os.Exit(1)
