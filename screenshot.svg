@@ -6,6 +6,7 @@
       .header-title { font-size: 13px; fill: #FF8C00; font-weight: bold; }
       .header-meta { font-size: 12px; fill: #777; }
       .badge-connected { font-size: 12px; fill: #5fdf5f; font-weight: bold; }
+      .badge-ollama { font-size: 12px; fill: #1a1a1a; font-weight: bold; }
       .label-user { font-size: 13px; fill: #FF8C00; font-weight: bold; }
       .label-assistant { font-size: 13px; fill: #5fb3d4; font-weight: bold; }
       .label-time { font-size: 11px; fill: #555; }
@@ -13,6 +14,7 @@
       .msg-code { font-size: 12px; fill: #adf0ad; }
       .input-text { font-size: 13px; fill: #eee; }
       .help-text { font-size: 11px; fill: #555; }
+      .badge-ssh-bg { fill: #5fb3d4; }
     </style>
     <clipPath id="chat-clip">
       <rect x="21" y="62" width="778" height="320" rx="0"/>
@@ -33,10 +35,14 @@
 
   <!-- Header bar -->
   <rect y="36" width="820" height="28" fill="#1a1a1a"/>
-  <text x="16" y="54" class="header-title">🦀 ClawChat CLI</text>
-  <text x="476" y="54" class="header-meta">pinchy.home.wrox.us:18789</text>
-  <text x="650" y="54" class="header-meta">agent:main:main</text>
-  <text x="762" y="54" class="badge-connected">● connected</text>
+  <text x="16" y="54" class="header-title">ClawChat CLI</text>
+  <text x="430" y="54" class="header-meta">http://localhost:11434</text>
+  <text x="620" y="54" class="header-meta">llama3:8b</text>
+  <!-- Ollama badge -->
+  <rect x="700" y="42" width="50" height="16" rx="4" class="badge-ssh-bg"/>
+  <text x="708" y="54" class="badge-ollama">ollama</text>
+  <!-- Connected badge -->
+  <text x="758" y="54" class="badge-connected">● connected</text>
 
   <!-- Chat box border -->
   <rect x="10" y="70" width="800" height="322" rx="6" fill="none" stroke="#008000" stroke-width="1"/>
@@ -45,39 +51,34 @@
   <g clip-path="url(#chat-clip)">
     <!-- Message 1: user -->
     <text x="22" y="96" class="label-user">you</text>
-    <text x="56" y="96" class="label-time">09:41</text>
-    <text x="22" y="113" class="msg-body">Hey! What can you help me with today?</text>
+    <text x="56" y="96" class="label-time">14:32</text>
+    <text x="22" y="113" class="msg-body">Write a Go function that reverses a linked list</text>
 
     <!-- Message 2: assistant -->
     <text x="22" y="136" class="label-assistant">assistant</text>
-    <text x="100" y="136" class="label-time">09:41</text>
-    <text x="22" y="153" class="msg-body">Quite a bit! I can help with coding, writing, research, answering questions,</text>
-    <text x="22" y="170" class="msg-body">brainstorming ideas, debugging, or just chatting. What's on your mind?</text>
-
-    <!-- Message 3: user -->
-    <text x="22" y="193" class="label-user">you</text>
-    <text x="56" y="193" class="label-time">09:42</text>
-    <text x="22" y="210" class="msg-body">Can you write me a Go function that checks if a string is a palindrome?</text>
-
-    <!-- Message 4: assistant -->
-    <text x="22" y="233" class="label-assistant">assistant</text>
-    <text x="100" y="233" class="label-time">09:42</text>
-    <text x="22" y="250" class="msg-body">Sure! Here's a clean Go implementation:</text>
-    <text x="22" y="270" class="msg-code">func IsPalindrome(s string) bool {</text>
-    <text x="22" y="287" class="msg-code">    r := []rune(strings.ToLower(s))</text>
-    <text x="22" y="304" class="msg-code">    for i, j := 0, len(r)-1; i &lt; j; i, j = i+1, j-1 {</text>
-    <text x="22" y="321" class="msg-code">        if r[i] != r[j] { return false }</text>
-    <text x="22" y="338" class="msg-code">    }</text>
-    <text x="22" y="355" class="msg-code">    return true</text>
-    <text x="22" y="372" class="msg-code">}</text>
+    <text x="100" y="136" class="label-time">14:32</text>
+    <text x="22" y="153" class="msg-body">Here's a clean iterative approach:</text>
+    <text x="22" y="176" class="msg-code">type Node struct {</text>
+    <text x="22" y="193" class="msg-code">    Val  int</text>
+    <text x="22" y="210" class="msg-code">    Next *Node</text>
+    <text x="22" y="227" class="msg-code">}</text>
+    <text x="22" y="248" class="msg-code">func Reverse(head *Node) *Node {</text>
+    <text x="22" y="265" class="msg-code">    var prev *Node</text>
+    <text x="22" y="282" class="msg-code">    curr := head</text>
+    <text x="22" y="299" class="msg-code">    for curr != nil {</text>
+    <text x="22" y="316" class="msg-code">        next := curr.Next</text>
+    <text x="22" y="333" class="msg-code">        curr.Next = prev</text>
+    <text x="22" y="350" class="msg-code">        prev, curr = curr, next</text>
+    <text x="22" y="367" class="msg-code">    }</text>
+    <text x="22" y="384" class="msg-code">    return prev</text>
   </g>
 
   <!-- Input box -->
   <rect x="10" y="398" width="800" height="34" rx="6" fill="none" stroke="#5fdf5f" stroke-width="1"/>
-  <text x="22" y="420" class="input-text">What about Unicode support?</text>
+  <text x="22" y="420" class="input-text">Can you add a recursive version too?</text>
   <!-- Cursor -->
-  <rect x="238" y="407" width="7" height="14" fill="#eee" rx="1"/>
+  <rect x="296" y="407" width="7" height="14" fill="#eee" rx="1"/>
 
   <!-- Help line -->
-  <text x="14" y="452" class="help-text">enter: send   ctrl+c: quit   /help   ↑↓: scroll</text>
+  <text x="14" y="452" class="help-text">enter: send   ctrl+s: models   ctrl+c: quit   /help   ↑↓: scroll</text>
 </svg>
