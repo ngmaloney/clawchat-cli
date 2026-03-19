@@ -30,11 +30,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Example (Ollama):\n")
 			fmt.Fprintf(os.Stderr, "  backend: ollama\n")
 			fmt.Fprintf(os.Stderr, "  ollama:\n")
-			fmt.Fprintf(os.Stderr, "    url: http://llama.home.wrox.us:11434\n")
+			fmt.Fprintf(os.Stderr, "    url: http://localhost:11434\n")
 			fmt.Fprintf(os.Stderr, "    model: qwen2.5:14b\n")
 		} else {
 			fmt.Fprintf(os.Stderr, "Example (OpenClaw):\n")
-			fmt.Fprintf(os.Stderr, "  gateway_url: ws://pinchy.home.wrox.us:18789\n")
+			fmt.Fprintf(os.Stderr, "  gateway_url: ws://localhost:18789\n")
 			fmt.Fprintf(os.Stderr, "  token: your-gateway-token\n")
 		}
 		os.Exit(1)

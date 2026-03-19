@@ -6,7 +6,7 @@ import (
 )
 
 // These tests require a running Ollama server.
-// Set OLLAMA_TEST_URL to enable (e.g. http://llama.home.wrox.us:11434).
+// Set OLLAMA_TEST_URL to enable (e.g. http://localhost:11434).
 
 func ollamaURL(t *testing.T) string {
 	url := os.Getenv("OLLAMA_TEST_URL")
